@@ -1,0 +1,29 @@
+# Generated builds and local IDE state
+**/Debug/
+**/Release/
+**/.metadata/
+**/*.o
+**/*.d
+**/*.elf
+**/*.hex
+**/*.map
+**/*.srec
+**/*.bin
+*.asv
+*.m~
+*.mex*
+slprj/
+# Private audio, trained models and local credentials
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.mat
+*.pth
+*.pt
+*.onnx
+.env
+.env.*
+__pycache__/
+.DS_Store
+Thumbs.db
