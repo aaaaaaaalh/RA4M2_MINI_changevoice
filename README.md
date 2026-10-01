@@ -1,3 +1,5 @@
+> v0.3 AI 参考音色变声：请先阅读 [AI_START_HERE.md](AI_START_HERE.md)。
+
 # RA4M2 MINI VoiceLab
 
 基于 RA4M2MINI 与 MATLAB R2025b 的语音采集、降噪和变声实验。当前基线版本：**v0.2.0**。

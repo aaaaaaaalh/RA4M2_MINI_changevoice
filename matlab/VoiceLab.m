@@ -42,14 +42,15 @@ classdef VoiceLab < handle
             obj.build(); obj.devices();
         end
         function build(obj)
-            obj.Fig=uifigure('Name','VoiceLab v0.2 · 板卡语音实验室','Position',[80 80 1220 820], ...
+            obj.Fig=uifigure('Name','VoiceLab v0.3 · 板卡语音实验室','Position',[80 80 1220 820], ...
                 'Color',[0.95 0.96 0.98],'CloseRequestFcn',@(~,~)obj.close());
             root=uigridlayout(obj.Fig,[4 1]); root.RowHeight={52,44,'1x',46};
             heading=uilabel(root,'Text','VoiceLab  /  语音变声实验室','FontSize',24,'FontWeight','bold');
             heading.FontColor=[0.10 0.19 0.32];
-            modes=uigridlayout(root,[1 3]); modes.ColumnWidth={170,170,'1x'};
+            modes=uigridlayout(root,[1 4]); modes.ColumnWidth={150,150,190,'1x'};
             a=uibutton(modes,'Text','实时变声','ButtonPushedFcn',@(~,~)obj.setMode('live'));
             b=uibutton(modes,'Text','录音后变声','ButtonPushedFcn',@(~,~)obj.setMode('offline'));
+            ai=uibutton(modes,'Text','AI 参考音色变声','ButtonPushedFcn',@(~,~)VoiceLabAI(obj.Raw,obj.Fs));
             obj.ModeText=uilabel(modes,'Text','当前：录音后变声 · 16 kHz / 单声道');
             body=uigridlayout(root,[1 2]); body.ColumnWidth={340,'1x'};
             panel=uipanel(body,'Title','音频与效果设置');
@@ -86,7 +87,7 @@ classdef VoiceLab < handle
             ax=uiaxes(plots); title(ax,'原声 · 32 柱频谱'); obj.SpecIn=bar(ax,125:250:7875,-100*ones(1,32),1,'FaceColor',[.12 .45 .75],'BaseValue',-100); obj.spectrumAxes(ax);
             ax=uiaxes(plots); title(ax,'处理后 · 32 柱频谱'); obj.SpecOut=bar(ax,125:250:7875,-100*ones(1,32),1,'FaceColor',[.1 .6 .45],'BaseValue',-100); obj.spectrumAxes(ax);
             obj.Status=uilabel(root,'Text','就绪 · 先选择输入输出设备。','WordWrap','on');
-            obj.Controls={a,b,obj.InputDevice,obj.OutputDevice,refresh,learn,obj.Preset,obj.Pitch,obj.Bright,obj.Carrier,obj.Gain,obj.Denoise,obj.Alpha,obj.Formants,start,imp,process,play1,play2,save1,save2};
+            obj.Controls={a,b,ai,obj.InputDevice,obj.OutputDevice,refresh,learn,obj.Preset,obj.Pitch,obj.Bright,obj.Carrier,obj.Gain,obj.Denoise,obj.Alpha,obj.Formants,start,imp,process,play1,play2,save1,save2};
         end
         function d=drop(~,grid,row,label,items)
             l=uilabel(grid,'Text',label); l.Layout.Row=row; l.Layout.Column=1;
