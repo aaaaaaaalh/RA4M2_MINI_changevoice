@@ -29,9 +29,9 @@ def convert(config, directory):
         raise ValueError('扩散步数或 CFG 超出范围')
     # Fixed loopback endpoint: recordings never go to a remote hosted API.
     client = Client('http://127.0.0.1:7860', verbose=False,
-                    download_files=str(directory), httpx_kwargs={'timeout': 30.0})
+                    download_files=False, httpx_kwargs={'timeout': 30.0})
     job = client.submit(handle_file(str(source)), handle_file(str(reference)),
-                        steps, 1.0, cfg, api_name='/voice_conversion')
+                        steps, 1.0, cfg, api_name='/predict')
     deadline = time.monotonic() + 1800
     while not job.done():
         if (directory / 'cancel').exists() or time.monotonic() > deadline:
@@ -41,9 +41,20 @@ def convert(config, directory):
     result = job.result()
     if (directory / 'cancel').exists():
         raise RuntimeError('已取消')
+
     if not isinstance(result, (list, tuple)) or len(result) != 2 or not result[1]:
-        raise RuntimeError('Seed-VC 未返回完整音频；请查看后台 PowerShell 报错')
-    samples, rate = sf.read(result[1], dtype='float32', always_2d=True)
+        raise RuntimeError('Seed-VC 未返回完整音频')
+
+    full = result[1]
+    if isinstance(full, dict):
+        full = full.get('path')
+    elif hasattr(full, 'path'):
+        full = full.path
+
+    if not full or not Path(full).is_file():
+        raise RuntimeError(f'完整 WAV 本机路径不可读取：{full!r}')
+
+    samples, rate = sf.read(full, dtype='float32', always_2d=True)
     samples = samples.mean(axis=1)
     if not len(samples) or not np.isfinite(samples).all():
         raise ValueError('模型输出为空或包含无效数值')

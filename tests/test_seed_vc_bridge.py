@@ -19,15 +19,16 @@ class BridgeTest(unittest.TestCase):
             sf.write(source,np.ones(48000)*0.1,48000)
             sf.write(reference,np.ones(48000)*0.1,48000)
             sf.write(out,np.ones(22050+delta)*0.2,22050)
-            job=types.SimpleNamespace(done=lambda:not cancel,result=lambda: ('stream.mp3',None if bad else str(out)),cancel=lambda:None)
+            job=types.SimpleNamespace(done=lambda:not cancel,result=lambda: ('stream.mp3',None if bad else {'path': str(out)}),cancel=lambda:None)
             test=self
             class Client:
                 # Match the installed gradio-client 1.8.0 signature fields used here.
                 def __init__(self,src,verbose,download_files,httpx_kwargs):
                     test.assertEqual(src,'http://127.0.0.1:7860')
+                    test.assertIs(download_files, False)
                 def submit(self,*args,api_name):
                     test.assertEqual(args[2:],(25,1.0,0.7))
-                    test.assertEqual(api_name,'/voice_conversion')
+                    test.assertEqual(api_name,'/predict')
                     return job
             if cancel: (d/'cancel').touch()
             with patch.dict(sys.modules,{'gradio_client':types.SimpleNamespace(Client=Client,handle_file=lambda x:x)}):

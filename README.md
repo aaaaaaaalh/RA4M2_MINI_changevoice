@@ -1,3 +1,8 @@
+# v0.4.0 当前入口
+
+完整包运行 `START_VOICELAB.m`，详见 [实时与板卡接入说明](REALTIME_START_HERE.md)。
+电脑麦克风 AI 已获用户本次验证；新增板卡 AI 通路待实机验证，详见 CHANGELOG.md。
+
 > v0.3 AI 参考音色变声：请先阅读 [AI_START_HERE.md](AI_START_HERE.md)。
 
 # RA4M2 MINI VoiceLab
