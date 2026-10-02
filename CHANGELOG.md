@@ -1,3 +1,8 @@
+# v0.3.1 — 2026-10-02
+
+- 修复 MATLAB 启动 Python 时对 .NET 环境变量索引赋值导致的错误。改用 Python -X utf8 参数，保留 UTF-8 模式。
+- 已检查启动参数与移除索引赋值；本次未运行 Windows MATLAB，实际启动待用户复测。
+
 # v0.3.0 — 2026-10-01
 
 - 新增 MATLAB AI 参考音色窗口，通过本机 Gradio 连接已部署 Seed-VC。

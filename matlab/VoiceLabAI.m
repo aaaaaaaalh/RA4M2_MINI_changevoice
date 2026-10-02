@@ -22,7 +22,7 @@ classdef VoiceLabAI < handle
     end
     methods
         function obj=VoiceLabAI(raw,fs)
-            obj.Fig=uifigure('Name','VoiceLab v0.3 · AI 参考音色变声', ...
+            obj.Fig=uifigure('Name','VoiceLab v0.3.1 · AI 参考音色变声', ...
                 'Position',[160 140 760 570],'CloseRequestFcn',@(~,~)obj.close());
             g=uigridlayout(obj.Fig,[12 2]); g.ColumnWidth={180,'1x'};
             g.RowHeight={40,32,32,32,32,32,36,36,36,36,40,'1x'};
@@ -110,9 +110,8 @@ classdef VoiceLabAI < handle
                 assert(isfile(bridge),'缺少 python/seed_vc_bridge.py，请完整解压。');
                 proc=System.Diagnostics.Process;
                 proc.StartInfo.FileName=obj.Python.Value;
-                proc.StartInfo.Arguments=sprintf('"%s" "%s"',bridge,request);
+                proc.StartInfo.Arguments=sprintf('-X utf8 "%s" "%s"',bridge,request);
                 proc.StartInfo.UseShellExecute=false; proc.StartInfo.CreateNoWindow=true;
-                proc.StartInfo.EnvironmentVariables.Item('PYTHONUTF8')='1';
                 assert(proc.Start(),'Python 启动失败。');
                 obj.Status.Text='AI 转换中…首次连接可能稍慢，可点击取消。';
                 started=tic; cancelAt=inf;
