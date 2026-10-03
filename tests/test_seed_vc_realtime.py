@@ -25,11 +25,13 @@ class RealtimeTests(unittest.TestCase):
                 self.pending = samples[:-remainder]  # actual 1.1.5 bug
         cls = ast.ClassDef(name='Headless', bases=[ast.Name(id='Base', ctx=ast.Load())],
                            keywords=[], body=[callback], decorator_list=[])
-        namespace = dict(Base=Base, time=__import__('time'))
+        namespace = dict(Base=Base, time=__import__('time'), board=True)
         exec(compile(ast.fix_missing_locations(ast.Module(body=[cls], type_ignores=[])),
                      '<callback test>', 'exec'), namespace)
         engine = namespace['Headless']()
         engine.gui_config = SimpleNamespace(samplerate=22050)
+        gated = []
+        engine.vad_model = SimpleNamespace(apply_output_gate=lambda output, rate: gated.append(rate))
         engine.pending, engine.processed = [], []
         engine.vad_chunk_size = 500
         for block in range(1000):
@@ -37,6 +39,7 @@ class RealtimeTests(unittest.TestCase):
             self.assertEqual(engine.pending, [])
             self.assertEqual(engine.processed, [block] * 11200)
             engine.processed.clear()
+        self.assertEqual(gated, [22050] * 1000)
 
     def test_board_needs_only_output_device(self):
         d=dict(id=2,name='phones',host='MME',inputs=0,outputs=2)

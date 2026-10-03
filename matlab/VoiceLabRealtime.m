@@ -8,6 +8,8 @@ classdef VoiceLabRealtime < handle
         Source
         Com
         Gain
+        BoardFilter
+        Monitor
         Input
         Output
         RefText
@@ -29,10 +31,10 @@ classdef VoiceLabRealtime < handle
     end
     methods
         function obj=VoiceLabRealtime()
-            obj.Fig=uifigure('Name','VoiceLab · 实时 AI 变声 v0.4.0', ...
-                'Position',[160 80 820 690],'CloseRequestFcn',@(~,~)obj.close());
-            g=uigridlayout(obj.Fig,[15 2]); g.ColumnWidth={170,'1x'};
-            g.RowHeight={42,32,32,32,32,32,32,32,32,32,40,44,40,'1x',36};
+            obj.Fig=uifigure('Name','VoiceLab · 实时 AI 变声 v0.4.1 检查版', ...
+                'Position',[160 40 900 800],'CloseRequestFcn',@(~,~)obj.close());
+            g=uigridlayout(obj.Fig,[17 2]); g.ColumnWidth={170,'1x'};
+            g.RowHeight={42,32,32,32,32,32,32,32,32,32,32,40,44,40,'1x',36,36};
             t=uilabel(g,'Text','实时 AI 变声 · 参考音色','FontSize',22,'FontWeight','bold'); t.Layout.Column=[1 2];
             uilabel(g,'Text','Python 虚拟环境');
             obj.Python=uieditfield(g,'Value',fullfile(getenv('USERPROFILE'),'VoiceLabAI','.venv','Scripts','python.exe'));
@@ -43,6 +45,7 @@ classdef VoiceLabRealtime < handle
             uilabel(g,'Text','输入来源'); obj.Source=uidropdown(g,'Items',{'电脑麦克风','RA4M2 板卡'},'ValueChangedFcn',@(~,~)obj.sourceChanged());
             uilabel(g,'Text','板卡 COM 口'); obj.Com=uieditfield(g,'Value','COM3','Enable','off');
             uilabel(g,'Text','板卡输入增益（dB）'); obj.Gain=uieditfield(g,'numeric','Value',0,'Limits',[-12 24],'Enable','off');
+            uilabel(g,'Text','板卡语音滤波'); obj.BoardFilter=uicheckbox(g,'Text','80–3800 Hz（可开启对比）','Value',false,'Enable','off');
             uilabel(g,'Text','设备驱动类型'); obj.Host=uidropdown(g,'Items',{'请先刷新设备'},'ValueChangedFcn',@(~,~)obj.updateDevices());
             uilabel(g,'Text','输入麦克风'); obj.Input=uidropdown(g,'Items',{'请先刷新设备'});
             uilabel(g,'Text','输出耳机'); obj.Output=uidropdown(g,'Items',{'请先刷新设备'});
@@ -53,12 +56,19 @@ classdef VoiceLabRealtime < handle
             obj.Status=uilabel(g,'Text','就绪。先刷新设备，再选择麦克风和耳机。','WordWrap','on'); obj.Status.Layout.Column=[1 2];
             obj.Refresh=uibutton(g,'Text','刷新设备','ButtonPushedFcn',@(~,~)obj.launch('devices'));
             uibutton(g,'Text','打开本次后台日志','ButtonPushedFcn',@(~,~)obj.log());
+            obj.Monitor=uibutton(g,'Text','板卡原声监听（不加载 AI 模型）','Enable','off','ButtonPushedFcn',@(~,~)obj.monitor()); obj.Monitor.Layout.Column=[1 2];
             obj.Poller=timer('ExecutionMode','fixedSpacing','Period',0.5,'BusyMode','drop','TimerFcn',@(~,~)obj.poll());
         end
         function sourceChanged(obj)
             board=strcmp(obj.Source.Value,'RA4M2 板卡');
-            obj.Input.Enable='on'; obj.Com.Enable='off'; obj.Gain.Enable='off';
-            if board, obj.Input.Enable='off'; obj.Com.Enable='on'; obj.Gain.Enable='on'; end
+            obj.Input.Enable='on'; obj.Com.Enable='off'; obj.Gain.Enable='off'; obj.BoardFilter.Enable='off'; obj.Monitor.Enable='off';
+            if board, obj.Input.Enable='off'; obj.Com.Enable='on'; obj.Gain.Enable='on'; obj.BoardFilter.Enable='on'; obj.Monitor.Enable='on'; end
+        end
+        function monitor(obj)
+            if ~strcmp(obj.Source.Value,'RA4M2 板卡')||~isnumeric(obj.Output.Value)
+                uialert(obj.Fig,'请选择板卡来源，并刷新选择耳机。','提示'); return;
+            end
+            obj.launch('monitor');
         end
         function choose(obj)
             [f,p]=uigetfile({'*.wav;*.flac','参考音色'}); if isequal(f,0), return; end
@@ -93,12 +103,12 @@ classdef VoiceLabRealtime < handle
                 assert(isfile(fullfile(obj.Repo.Value,'real-time-gui.py')),'找不到 real-time-gui.py。');
                 obj.Work=tempname; mkdir(obj.Work); obj.LastStatus='';
                 cfg=struct('action',action,'repo',obj.Repo.Value);
-                if strcmp(action,'run')
+                if any(strcmp(action,{'run','monitor'}))
                     cfg.reference=obj.Reference;
                     cfg.source_kind='microphone';
                     if strcmp(obj.Source.Value,'RA4M2 板卡')
                         cfg.source_kind='board'; cfg.com_port=upper(strtrim(obj.Com.Value));
-                        cfg.board_gain_db=obj.Gain.Value;
+                        cfg.board_gain_db=obj.Gain.Value; cfg.board_filter=obj.BoardFilter.Value;
                     else
                         cfg.input=obj.Devices(find([obj.Devices.id]==obj.Input.Value,1));
                     end
@@ -124,7 +134,7 @@ classdef VoiceLabRealtime < handle
         end
         function busy(obj,value)
             state='on'; if value, state='off'; end
-            controls={obj.Python,obj.Repo,obj.Host,obj.Input,obj.Output,obj.Browse,obj.Refresh,obj.Start,obj.Source,obj.Com,obj.Gain};
+            controls={obj.Python,obj.Repo,obj.Host,obj.Input,obj.Output,obj.Browse,obj.Refresh,obj.Start,obj.Source,obj.Com,obj.Gain,obj.BoardFilter,obj.Monitor};
             for k=1:numel(controls), controls{k}.Enable=state; end
             obj.Stop.Enable='off'; if value, obj.Stop.Enable='on'; else, obj.sourceChanged(); end
         end
@@ -134,23 +144,26 @@ classdef VoiceLabRealtime < handle
                 path=fullfile(obj.Work,'status.json');
                 if isfile(path)
                     % Atomic replacement may briefly conflict with Windows reads.
-                    try, s=jsondecode(fileread(path)); catch, return; end
-                    if ~strcmp(obj.LastStatus,s.state)&&strcmp(s.state,'devices')
-                        obj.Devices=s.devices;
-                        if ~isempty(obj.Devices)
-                            hosts=unique({obj.Devices.host},'stable'); obj.Host.Items=hosts;
-                            if any(strcmp(hosts,'MME')), obj.Host.Value='MME'; else, obj.Host.Value=hosts{1}; end
-                            obj.updateDevices();
+                    try, s=jsondecode(fileread(path)); catch, s=[]; end
+                    if ~isempty(s)
+                        if ~strcmp(obj.LastStatus,s.state)&&strcmp(s.state,'devices')
+                            obj.Devices=s.devices;
+                            if ~isempty(obj.Devices)
+                                hosts=unique({obj.Devices.host},'stable'); obj.Host.Items=hosts;
+                                if any(strcmp(hosts,'MME')), obj.Host.Value='MME'; else, obj.Host.Value=hosts{1}; end
+                                obj.updateDevices();
+                            end
                         end
-                    end
-                    obj.LastStatus=s.state;
-                    if ~obj.Stopping
-                        obj.Status.Text=s.message;
-                        if strcmp(s.state,'running')
-                            if isempty(s.infer_ms), val='预热中'; else, val=sprintf('%d ms',s.infer_ms); end
-                            obj.Status.Text=sprintf('运行中 · 每块处理耗时 %s（不是总延迟）\n设备缓冲异常累计 %d · 按当前配置保留较长监听延迟',val,s.xruns);
-                            if isfield(s,'board_status')&&~isempty(s.board_status)
-                                obj.Status.Text=sprintf('%s\n%s',obj.Status.Text,s.board_status);
+                        obj.LastStatus=s.state;
+                        if ~obj.Stopping
+                            obj.Status.Text=s.message;
+                            if strcmp(s.state,'running')
+                                if isempty(s.infer_ms), val='预热中'; else, val=sprintf('%d ms',s.infer_ms); end
+                                obj.Status.Text=sprintf('运行中 · 每块处理耗时 %s（不是总延迟）\n设备缓冲异常累计 %d · 按当前配置保留较长监听延迟',val,s.xruns);
+                                if strcmp(obj.Action,'monitor'), obj.Status.Text='板卡原声监听 · 未经过 AI / 语音门控'; end
+                                if isfield(s,'board_status')&&~isempty(s.board_status)
+                                    obj.Status.Text=sprintf('%s\n%s',obj.Status.Text,s.board_status);
+                                end
                             end
                         end
                     end

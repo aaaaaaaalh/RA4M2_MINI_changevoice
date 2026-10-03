@@ -81,6 +81,13 @@ class BoardTests(unittest.TestCase):
                 stream.close()
                 self.assertTrue(port.closed and output.closed)
 
+    def test_firmware_adc_scale(self):
+        import numpy as np
+        adc = np.array([0, 631, 2048, 4095], dtype=np.int32)
+        pcm = ((adc - 2048) * 16).astype('<i2')
+        recovered = np.frombuffer(pcm.tobytes(), dtype='<i2').astype(float) / 32768
+        np.testing.assert_array_equal(recovered, (adc - 2048) / 2048)
+
     def test_stop_while_waiting(self):
         from types import SimpleNamespace
         import threading

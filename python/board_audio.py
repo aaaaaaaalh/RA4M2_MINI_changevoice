@@ -58,13 +58,19 @@ class BoardStream:
         except ImportError as exc:
             raise RuntimeError('板卡 AI 需要 pyserial；请运行安装包中的 INSTALL_BOARD_SUPPORT.ps1。') from exc
         import numpy as np
-        from scipy.signal import lfilter, resample_poly
+        from scipy.signal import lfilter, resample_poly, butter, sosfilt
         self.np, self.lfilter, self.resample_poly = np, lfilter, resample_poly
         self.engine, self.folder = engine, folder
         self.parser = PacketParser()
         self.pending = deque()
         self.samples = 0
         self.peak = 0.0
+        self.raw_db = self.input_db = self.output_db = -120.0
+        self.filter_enabled = bool(config.get('board_filter', False))
+        self.sos = butter(2, [80, 3800], btype='bandpass', fs=16000, output='sos')
+        self.filter_state = np.zeros((len(self.sos), 2))
+        self.sosfilt = sosfilt
+        self.blocks = 0
         self.clipped = 0
         self.gain = 10 ** (float(config.get('board_gain_db', 0)) / 20)
         self.event = threading.Event()
@@ -141,6 +147,9 @@ class BoardStream:
                 x = self.read_block(count)
                 if x is None:
                     break
+                self.raw_db = self.level(x)
+                if self.filter_enabled:
+                    x, self.filter_state = self.sosfilt(self.sos, x, zi=self.filter_state)
                 # Keep 20 ms of filter history; pad the right edge by reflection.
                 joined = np.concatenate((self.history, x))
                 self.history = x[-320:].copy()
@@ -151,9 +160,14 @@ class BoardStream:
                 self.peak = float(np.max(np.abs(y)))
                 self.clipped += int(np.count_nonzero(np.abs(y) > 1))
                 y = np.clip(y, -1, 1).astype(np.float32)
+                self.input_db = self.level(y)
                 source = np.repeat(y[:, None], e.gui_config.channels, axis=1)
                 output = np.zeros_like(source)
                 e.audio_callback(source, output, e.block_frame, None, False)
+                self.output_db = self.level(output)
+                self.blocks += 1
+                if self.blocks % 3 == 0:
+                    print(self.summary(), flush=True)
                 if self.event.is_set():
                     break
                 if self.output.write(output):
@@ -179,6 +193,12 @@ class BoardStream:
             self.port.close()
             self.port = None
 
+    def level(self, samples):
+        return float(20 * self.np.log10(max(float(self.np.sqrt(self.np.mean(samples ** 2))), 1e-6)))
+
     def summary(self):
-        return (f'板卡包 {self.parser.packets} · 丢包 {self.parser.lost} · '
+        detector = getattr(self.engine, 'vad_model', None)
+        gate = ('语音门开启' if detector.open_for_block else '未检测到人声') if hasattr(detector, 'open_for_block') else '原声监听'
+        return (f'{gate} · 原始 RMS {self.raw_db:.1f} → AI输入 {self.input_db:.1f} → 输出 {self.output_db:.1f} dBFS\n'
+                f'板卡包 {self.parser.packets} · 丢包 {self.parser.lost} · '
                 f'坏同步 {self.parser.bad} · 输入峰值 {self.peak:.2f} · 削顶 {self.clipped}')

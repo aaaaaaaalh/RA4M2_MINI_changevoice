@@ -1,12 +1,12 @@
 # VoiceLab 中文操作说明
 
-板卡接入请先阅读上一层 START_HERE.md；本说明主要介绍共用的变声操作。
+板卡接入请先阅读上一层 REALTIME_START_HERE.md；本说明主要介绍共用的变声操作。
 
 本项目实现 MATLAB 电脑端语音采集、降噪、固定风格变声和分析界面。目标环境为 Windows 11、MATLAB R2025b，安装 Audio Toolbox、DSP System Toolbox、Signal Processing Toolbox。
 
 ## 启动
 
-1. 完整解压压缩包，保留两个类文件在同一个 VoiceLab 文件夹内。
+1. 完整解压压缩包，保留包内 matlab、python 文件夹和根目录启动脚本。
 2. 在 MATLAB“当前文件夹”中打开这个文件夹。
 3. 先运行 `selftest_voicelab`，检查不依赖麦克风的算法。
 4. 再运行 `app = VoiceLab;` 打开界面。
@@ -64,7 +64,7 @@ VoiceLab.m：界面、电脑音频输入输出、生命周期管理。
 VoiceProcessor.m：独立于声卡的降噪、流式变声、离线变声和频谱函数。
 selftest_voicelab.m：在本机 MATLAB 上运行的无设备测试。
 
-v0.2 已加入 SerialAudioSource.m 和 AudioPacketParser.m。板卡配置、协议、丢包处理与验证方法见上一层 START_HERE.md。
+v0.2 已加入 SerialAudioSource.m 和 AudioPacketParser.m。板卡配置、协议、丢包处理与验证方法见上一层 REALTIME_START_HERE.md。
 
 ## 验证边界与参考
 

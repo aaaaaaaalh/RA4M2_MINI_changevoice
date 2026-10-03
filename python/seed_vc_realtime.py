@@ -8,6 +8,10 @@ import contextlib
 import hashlib
 import json
 import os
+# This adapter reuses an already provisioned local model environment.
+# Must be set before loading upstream imports / huggingface_hub constants.
+# An explicit external HF_HUB_OFFLINE=0 still permits provisioning downloads.
+os.environ.setdefault('HF_HUB_OFFLINE', '1')
 from pathlib import Path
 import sys
 import time
@@ -74,7 +78,7 @@ def validate_pair(devices, config):
 
 
 def run(config, folder):
-    print('VoiceLab 0.4.0 | VAD full-block fix | adapter:', __file__, flush=True)
+    print('VoiceLab 0.4.1 | board VAD events + input diagnostics | adapter:', __file__, flush=True)
     status = folder / 'status.json'
     def report(state, message, **kwargs):
         atomic_json(status, dict(state=state, message=message, **kwargs))
@@ -84,8 +88,8 @@ def run(config, folder):
     repo = Path(config['repo']).resolve()
     upstream = repo / 'real-time-gui.py'
     tree = engine_tree(upstream.read_text(encoding='utf-8-sig'))
-    reference = Path(config['reference']).resolve()
-    if not reference.is_file():
+    reference = Path(config.get('reference', '')).resolve()
+    if config['action'] != 'monitor' and not reference.is_file():
         raise RuntimeError('参考音频不存在')
     board = config.get('source_kind') == 'board'
     if board:
@@ -95,6 +99,34 @@ def run(config, folder):
         if not -12 <= float(config.get('board_gain_db', 0)) <= 24:
             raise ValueError('板卡输入增益须在 -12 到 24 dB 之间。')
     pair = validate_pair(enumerate_devices(), config)
+    print('Audio selection:', config.get('source_kind', 'microphone'),
+          'COM:', config.get('com_port'), 'gain dB:', config.get('board_gain_db'),
+          'input:', config.get('input'), 'output:', config.get('output'), flush=True)
+    if config['action'] == 'monitor':
+        if not board:
+            raise ValueError('原声监听仅用于板卡模式。')
+        import sounddevice as sd
+        import numpy as np
+        from board_audio import BoardStream
+        engine = SimpleNamespace(gui_config=SimpleNamespace(samplerate=22050,
+                                 channels=min(2, config['output']['outputs'])),
+                                 block_frame=15435, failure=None, xruns=0)
+        engine.audio_callback = lambda source, output, *args: np.copyto(output, source)
+        stream = BoardStream(engine, sd, config, folder)
+        try:
+            stream.start()
+            while not (folder/'stop').exists():
+                if engine.failure:
+                    raise RuntimeError(engine.failure)
+                if not stream.active:
+                    raise RuntimeError('板卡原声监听已停止。')
+                report('running', '板卡原声监听（未经过 AI）', infer_ms=None,
+                       xruns=engine.xruns, sample_rate=22050, board_status=stream.summary())
+                time.sleep(0.5)
+        finally:
+            stream.close()
+        report('stopped', '原声监听已停止')
+        return
     os.chdir(repo)
     sys.path.insert(0, str(repo))
     report('loading', '正在加载实时模型…')
@@ -154,6 +186,8 @@ def run(config, folder):
                 # Set here because start_vc initializes VAD to at most 500 ms.
                 self.vad_chunk_size = 1000 * frames / self.gui_config.samplerate
                 super().audio_callback(indata, outdata, frames, times, flags)
+                if board:
+                    self.vad_model.apply_output_gate(outdata, self.gui_config.samplerate)
                 self.last_callback = time.monotonic()
             except Exception:
                 outdata.fill(0)
@@ -167,7 +201,10 @@ def run(config, folder):
             return
         report('loading', '正在加载语音检测模型…')
         from funasr import AutoModel
-        engine.vad_model = AutoModel(model='fsmn-vad', model_revision='v2.0.4')
+        engine.vad_model = AutoModel(model='fsmn-vad', model_revision='v2.0.4', disable_update=True)
+        if board:
+            from vad_gate import BoardVadGate
+            engine.vad_model = BoardVadGate(engine.vad_model, engine)
         if (folder / 'stop').exists():
             return
         c = engine.gui_config
